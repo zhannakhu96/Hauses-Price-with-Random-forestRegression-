@@ -1,10 +1,14 @@
+import os
 import numpy as np, pandas as pd, matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import LinearRegression
 from sklearn.inspection import permutation_importance, PartialDependenceDisplay
 from sklearn.metrics import r2_score, mean_absolute_error
+
+os.makedirs("plots", exist_ok=True)
 
 RS = 42
 rng = np.random.default_rng(RS)
@@ -24,8 +28,10 @@ df.to_csv("haus_synthetic.csv", index=False)
 
 X, y = df.drop(columns="price").astype(float), df.price
 Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.2, random_state=RS)
+
 rf = RandomForestRegressor(n_estimators=400, min_samples_leaf=2, max_features=0.5,
                            max_depth=20, random_state=RS, n_jobs=-1).fit(Xtr, ytr)
+lr = LinearRegression().fit(Xtr, ytr)
 p = rf.predict(Xte); res = yte - p
 print(f"R2={r2_score(yte,p):.4f} MAE={mean_absolute_error(yte,p):,.0f}")
 plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.alpha": .3})
@@ -56,9 +62,11 @@ ax.set(title="Permutation importance (drop in R²)", xlabel="Mean importance")
 fig.tight_layout(); fig.savefig("plots/3_importance.png"); plt.close()
 
 # 4 partial dependence
-fig, ax = plt.subplots(figsize=(11,7))
-PartialDependenceDisplay.from_estimator(rf, Xte, ["living_area_m2","year_built","dist_center_km","plot_area_m2"], ax=ax)
-fig.suptitle("Partial dependence (price in €)"); fig.tight_layout(); fig.savefig("plots/4_partial_dependence.png"); plt.close()
+fig, axs = plt.subplots(2, 2, figsize=(11,7))
+PartialDependenceDisplay.from_estimator(
+    rf, Xte, ["living_area_m2","year_built","dist_center_km","plot_area_m2"], ax=axs.ravel())
+fig.suptitle("Partial dependence (price in €)"); fig.tight_layout()
+fig.savefig("plots/4_partial_dependence.png"); plt.close()
 
 # 5 error by price band
 q = pd.qcut(yte, 5); d = pd.DataFrame({"band": q, "res": res, "ape": np.abs(res/yte)*100})
@@ -71,6 +79,10 @@ a.set(title="Mean residual by price quintile", ylabel="k€")
 b.bar(lbl, g.mape, color="#468faf"); b.set(title="MAPE by price quintile", ylabel="%")
 fig.tight_layout(); fig.savefig("plots/5_error_by_price_band.png"); plt.close()
 
+# R2 comparison
+print("R2 linear:", round(r2_score(yte, lr.predict(Xte)), 4))
+print("R2 forest:", round(r2_score(yte, rf.predict(Xte)), 4))
+
 # 6 correlation
 fig, ax = plt.subplots(figsize=(6.5,5.5))
 c = df.corr(); im = ax.imshow(c, cmap="RdBu_r", vmin=-1, vmax=1)
@@ -81,3 +93,4 @@ for i in range(len(c)):
 fig.colorbar(im); ax.set_title("Correlation matrix"); fig.tight_layout()
 fig.savefig("plots/6_correlation.png"); plt.close()
 print(df.price.describe().round(0))
+
